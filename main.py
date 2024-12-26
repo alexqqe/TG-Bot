@@ -36,6 +36,15 @@ async def start_command(message: Message, state: FSMContext):
     await message.answer("Введите первый город(на английском языке):")
     await state.set_state(CityStates.first_city)
 
+@dp.message(F.text == '/help')
+async def start_command1(message: Message, state: FSMContext):
+    await message.answer("Это бот для прогноза погоды. Нажмите 'Попробовать!', чтобы начать.")
+
+@dp.message(F.text == '/weather')
+async def start_command1(message: Message, state: FSMContext):
+    await message.answer("Введите первый город(на английском языке):")
+    await state.set_state(CityStates.first_city)
+
 # Обработка первого города
 @dp.message(CityStates.first_city)
 async def process_first_city(message: Message, state: FSMContext):
