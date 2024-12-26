@@ -3,87 +3,90 @@ import logging
 import asyncio
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import ErrorEvent
+from weather_forecast import forecast
 
-API_KEY = ''
+# Инициализация бота
+with open('/Users/skomorohovaleks/PycharmProjects/TG-Bot/.venv/api_key_1.txt', 'r') as file:
+    API_KEY = file.read().strip()
 
 bot = Bot(token=API_KEY)
 dp = Dispatcher()
 
-users = {}
+# Логгирование
+logging.basicConfig(level=logging.INFO)
 
 class CityStates(StatesGroup):
     first_city = State()  # Состояние для первого города
     second_city = State()  # Состояние для второго города
-    another_cities = State() # Состояние для доп городов
-
-STATE_WRITING1 = 'writing_first_city'
-STATE_WRITING2 = 'writing_sec_city'
+    another_cities = State()  # Состояние для дополнительных городов
+    getting_data = State()  # Получение данных прогноза
 
 # Обработчик команды /start
 @dp.message(F.text == '/start')
 async def send_welcome(message: types.Message):
-    # users[message.from_user.id] = {'state': STATE_WRITING1, 'city1': [], 'city2': [], 'another_cities':[]}
-    # Создание кнопки
     button = types.KeyboardButton(text='Попробовать!')
-
-    # Создание клавиатуры
     keyboard = types.ReplyKeyboardMarkup(keyboard=[[button]], resize_keyboard=True)
+    await message.answer('Привет! Это бот для прогноза погоды. Нажмите "Попробовать!", чтобы начать.', reply_markup=keyboard)
 
-    await message.answer('Привет! Это тестовый бот, который может быстро вернуть информацию о погоде в выбранных городах', reply_markup=keyboard)
-
-# Обработчик кнопки «Нажми меня!»
+# Начало сценария
 @dp.message(F.text == 'Попробовать!')
 async def start_command(message: Message, state: FSMContext):
-    await message.answer("Привет! Введите первый город:")
-    await state.set_state(CityStates.first_city)  # Устанавливаем состояние для первого города
+    await message.answer("Введите первый город(на английском языке):")
+    await state.set_state(CityStates.first_city)
 
-# Получаем 1 город
+# Обработка первого города
 @dp.message(CityStates.first_city)
 async def process_first_city(message: Message, state: FSMContext):
     first_city = message.text
-    # Сохраняем первый город в состояние
     await state.update_data(first_city=first_city)
-    await message.answer(f"Вы ввели первый город: {first_city}. Теперь введите второй город:")
-    await state.set_state(CityStates.second_city)  # Переход в состояние ожидания второго города
+    await message.answer(f"Первый город: {first_city}. Теперь введите второй город(на английском языке):")
+    await state.set_state(CityStates.second_city)
 
-# Получаем 2 город
+# Обработка второго города
 @dp.message(CityStates.second_city)
 async def process_second_city(message: Message, state: FSMContext):
     second_city = message.text
-    # Получаем данные из состояния
+    await state.update_data(second_city=second_city)
     data = await state.get_data()
-    first_city = data.get('first_city')
+    await message.answer(f"Вы ввели:\n1. {data['first_city']}\n2. {data['second_city']}")
+    await message.answer('Хотите добавить ещё города?', reply_markup=await get_keyboard_1())
 
-    # Выводим результаты
-    await message.answer(f"Вы ввели два города:\n1. {first_city}\n2. {second_city}")
-
-    await message.answer(
-        'Добавить в прогноз погоды ещё один город?',
-        reply_markup=await get_keyboard_1()
-    )
-    # # Очистка состояния
-    # await state.clear()
-
+# Клавиатура для добавления городов
 async def get_keyboard_1():
-    buttons = [InlineKeyboardButton(text='Добавить', callback_data='first'), InlineKeyboardButton(text='Не добавлять', callback_data='sec')]
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons], row_width=2)
-    return keyboard
+    buttons = [
+        InlineKeyboardButton(text='Добавить город', callback_data='add_city'),
+        InlineKeyboardButton(text='Готово', callback_data='done')
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
+# Клавиатура для выбора дня
+async def get_keyboard_2():
+    buttons = [
+        InlineKeyboardButton(text='Сегодня', callback_data='0'),
+        InlineKeyboardButton(text='1 день', callback_data='1'),
+        InlineKeyboardButton(text='2 дня', callback_data='2'),
+        InlineKeyboardButton(text='3 дня', callback_data='3'),
+        InlineKeyboardButton(text='4 дня', callback_data='4')
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+# Обработка нажатий кнопок
 @dp.callback_query()
-async def handle_callback(callback_query: types.CallbackQuery, state: FSMContext):
-    if callback_query.data == "first":
+async def handle_callback(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data
+
+    if data == 'add_city':
         await callback_query.message.answer("Введите название города:")
         await state.set_state(CityStates.another_cities)
-    elif callback_query.data == "sec":
-        await callback_query.message.answer("Спасибо! Все города сохранены.")
-        # data = await state.get_data()
-        # another_cities = data.get("another_cities", [])
-        # await callback_query.message.answer(f'{another_cities}')
-        await state.clear()
+    elif data == 'done':
+        await callback_query.message.answer("Выберите день для прогноза:", reply_markup=await get_keyboard_2())
+        await state.set_state(CityStates.getting_data)
+    else:
+        await getting_data(callback_query, state)
 
+# Добавление дополнительных городов
 @dp.message(CityStates.another_cities)
 async def process_another_city(message: Message, state: FSMContext):
     another_city = message.text
@@ -91,39 +94,49 @@ async def process_another_city(message: Message, state: FSMContext):
     another_cities = data.get("another_cities", [])
     another_cities.append(another_city)
     await state.update_data(another_cities=another_cities)
+    await message.answer(f"Город {another_city} добавлен. Хотите добавить ещё?", reply_markup=await get_keyboard_1())
 
-    await message.answer(
-        f"Вы добавили город: {another_city}. Хотите добавить ещё один город?",
-        reply_markup=await get_keyboard_1()
-    )
+# Получение прогноза погоды
+@dp.callback_query(CityStates.getting_data)
+async def getting_data(callback_query: CallbackQuery, state: FSMContext):
+    day_number = int(callback_query.data)
+    data = await state.get_data()
 
+    # Формирование списка городов
+    cities = [data.get('first_city'), data.get('second_city')]
+    cities += data.get('another_cities', [])
 
-# Обработка сообщений
-@dp.message()
-async def handle_message(message: types.Message):
-    # if users[message.from_user.id]['state'] == STATE_WRITING1:
-    #     users[message.from_user.id]['city1'] = F.text
-    await message.answer('Извините, я не понял ваш запрос. Пожалуйста, выберите команду или кнопку.')
+    for city in cities:
+        if not city:
+            continue
 
+        try:
+            forecast_data = forecast(city)
+            day_forecast = forecast_data[day_number]
+            date = day_forecast["Date"]
+            wind_speed = day_forecast["WindSpeed"]
+            humidity = day_forecast["Humidity"]
+            precipitation = day_forecast["PrecipitationProbability"]
+            temp_max = day_forecast["TemperatureMax"]
+            temp_min = day_forecast["TemperatureMin"]
 
-
-@dp.message(F.text == '/help')
-async def on_button_click(message: types.Message):
-    await message.answer('bla-bla-bla')
-
-@dp.message(F.text == '/weather')
-async def on_button_click(message: types.Message):
-    await message.answer('bla-bla-bla')
-
-@dp.errors()
-async def handle_error(event: ErrorEvent):
-    logging.error(f'Произошла ошибка: {event.exception}')
-    if event.update.message:
-        await event.update.message.answer('Извините, произошла ошибка.')
+            await callback_query.message.answer(
+                f"Прогноз для {city}:\n"
+                f"Дата: {date[:10]}\n"
+                f"Скорость ветра: {wind_speed} м/с\n"
+                f"Влажность: {humidity}%\n"
+                f"Вероятность дождя: {precipitation}%\n"
+                f"Температура: от {temp_min}°F до {temp_max}°F"
+            )
+        except Exception as e:
+            logging.error(f"Ошибка при обработке города {city}: {e}")
+            await callback_query.message.answer(f"Не удалось получить прогноз для города {city}.")
 
 # Запуск бота
 if __name__ == '__main__':
     try:
         asyncio.run(dp.start_polling(bot))
     except Exception as e:
-        logging.error(f'Ошибка при запуске бота: {e}')
+        logging.error(f"Ошибка при запуске бота: {e}")
+
+# логирование и обработку ошибок мне помог сделать великий и ужасный чат-гпт, спасибо ему. считаю это честным
