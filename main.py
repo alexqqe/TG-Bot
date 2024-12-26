@@ -7,7 +7,7 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import ErrorEvent
 
-API_KEY = '8087652800:AAH_NZyjPl_1Tx0s4BATaviTO6o-VHNwfhQ'
+API_KEY = ''
 
 bot = Bot(token=API_KEY)
 dp = Dispatcher()
